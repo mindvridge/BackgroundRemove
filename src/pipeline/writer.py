@@ -410,3 +410,329 @@ class ImageSequenceWriter:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.stop()
+
+
+class AdvancedVideoWriter:
+    """Advanced video writer with multiple output format support.
+
+    Supports various output formats including:
+    - WebM with VP9 alpha channel
+    - ProRes 4444 with alpha
+    - Green screen compositing
+    - Custom background replacement
+
+    Example:
+        >>> from src.pipeline.output import OutputConfig, OutputFormat
+        >>> config = OutputConfig(format=OutputFormat.WEBM_VP9)
+        >>> writer = AdvancedVideoWriter("output.webm", 1920, 1080, config)
+        >>> writer.start()
+        >>> writer.write_with_alpha(foreground, alpha)
+        >>> writer.stop()
+    """
+
+    END_OF_STREAM = None
+
+    def __init__(
+        self,
+        output_path: str | Path,
+        width: int,
+        height: int,
+        config: "OutputConfig | None" = None,
+        queue_size: int = 64,
+    ) -> None:
+        """Initialize advanced video writer.
+
+        Args:
+            output_path: Path for output video.
+            width: Video width.
+            height: Video height.
+            config: Output configuration.
+            queue_size: Frame queue size.
+        """
+        from src.pipeline.output import OutputConfig, OutputFormat, CODEC_CONFIGS
+
+        self.output_path = Path(output_path)
+        self.width = width
+        self.height = height
+        self.config = config or OutputConfig()
+        self.queue_size = queue_size
+
+        # Get codec config
+        self._codec_config = CODEC_CONFIGS[self.config.format]
+
+        # Ensure correct file extension
+        expected_ext = f".{self._codec_config.container}"
+        if self.output_path.suffix.lower() != expected_ext:
+            self.output_path = self.output_path.with_suffix(expected_ext)
+
+        self._queue: Queue[tuple[ndarray, ndarray] | None] = Queue(maxsize=queue_size)
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._process: subprocess.Popen | None = None
+        self._compositor = None
+        self._started = False
+        self._frames_written = 0
+        self._error: Exception | None = None
+
+        # Setup compositor
+        self._setup_compositor()
+
+    def _setup_compositor(self) -> None:
+        """Set up compositor based on output format."""
+        from src.pipeline.output import (
+            OutputFormat,
+            GreenScreenCompositor,
+            ImageBackgroundCompositor,
+            VideoBackgroundCompositor,
+        )
+
+        fmt = self.config.format
+
+        if fmt == OutputFormat.GREEN_SCREEN:
+            self._compositor = GreenScreenCompositor(
+                color=self.config.green_screen_color
+            )
+        elif fmt == OutputFormat.CUSTOM_BG and self.config.background_path:
+            bg_path = Path(self.config.background_path)
+            video_exts = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'}
+
+            if bg_path.suffix.lower() in video_exts:
+                self._compositor = VideoBackgroundCompositor(
+                    bg_path,
+                    blur_amount=self.config.background_blur,
+                )
+            else:
+                self._compositor = ImageBackgroundCompositor(
+                    bg_path,
+                    blur_amount=self.config.background_blur,
+                )
+
+    @property
+    def frames_written(self) -> int:
+        """Number of frames written."""
+        return self._frames_written
+
+    @property
+    def is_running(self) -> bool:
+        """Check if writer is running."""
+        return self._thread is not None and self._thread.is_alive()
+
+    def _build_ffmpeg_command(self) -> list[str]:
+        """Build FFmpeg command for encoding.
+
+        Returns:
+            FFmpeg command as list of arguments.
+        """
+        codec_config = self._codec_config
+
+        # Determine input pixel format
+        if codec_config.supports_alpha and self._compositor is None:
+            input_pix_fmt = "rgba"
+        else:
+            input_pix_fmt = "rgb24"
+
+        cmd = [
+            "ffmpeg",
+            "-y" if self.config.overwrite else "-n",
+            # Input settings
+            "-f", "rawvideo",
+            "-vcodec", "rawvideo",
+            "-pix_fmt", input_pix_fmt,
+            "-s", f"{self.width}x{self.height}",
+            "-r", str(self.config.fps),
+            "-i", "-",  # stdin
+        ]
+
+        # Add audio source
+        if self.config.copy_audio and self.config.audio_source:
+            audio_path = Path(self.config.audio_source)
+            if audio_path.exists():
+                cmd.extend(["-i", str(audio_path)])
+
+        # Output codec
+        cmd.extend(["-c:v", codec_config.codec])
+
+        # Pixel format
+        cmd.extend(["-pix_fmt", codec_config.pixel_format])
+
+        # Quality/encoding settings
+        if self.config.bitrate:
+            cmd.extend(["-b:v", self.config.bitrate])
+        elif self.config.crf is not None:
+            cmd.extend(["-crf", str(self.config.crf)])
+        else:
+            cmd.extend(codec_config.extra_args)
+
+        # Audio settings
+        if self.config.copy_audio and self.config.audio_source:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            cmd.extend(["-map", "0:v:0", "-map", "1:a:0?"])
+
+        cmd.append(str(self.output_path))
+
+        return cmd
+
+    def _process_frame(
+        self,
+        foreground: ndarray,
+        alpha: ndarray,
+    ) -> ndarray:
+        """Process frame for output.
+
+        Args:
+            foreground: RGB foreground (H, W, 3).
+            alpha: Alpha matte (H, W).
+
+        Returns:
+            Processed frame ready for encoding.
+        """
+        import numpy as np
+
+        if self._compositor is not None:
+            # Composite with background
+            return self._compositor.composite(foreground, alpha)
+        elif self._codec_config.supports_alpha:
+            # Create RGBA frame
+            if len(alpha.shape) == 2:
+                alpha = alpha[:, :, np.newaxis]
+            return np.dstack([foreground, alpha])
+        else:
+            return foreground
+
+    def _writer_thread(self) -> None:
+        """Background thread for writing frames."""
+        import numpy as np
+
+        try:
+            cmd = self._build_ffmpeg_command()
+            logger.debug(f"FFmpeg command: {' '.join(cmd)}")
+
+            self._process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            while not self._stop_event.is_set():
+                try:
+                    item = self._queue.get(timeout=1.0)
+                except Empty:
+                    continue
+
+                if item is None:
+                    break
+
+                foreground, alpha = item
+                frame = self._process_frame(foreground, alpha)
+
+                try:
+                    if self._process.stdin is not None:
+                        self._process.stdin.write(frame.tobytes())
+                        self._frames_written += 1
+                except BrokenPipeError:
+                    logger.error("FFmpeg pipe broken")
+                    break
+
+        except Exception as e:
+            logger.error(f"Writer thread error: {e}")
+            self._error = e
+        finally:
+            if self._process is not None:
+                if self._process.stdin is not None:
+                    try:
+                        self._process.stdin.close()
+                    except Exception:
+                        pass
+
+                try:
+                    stdout, stderr = self._process.communicate(timeout=60)
+                    if self._process.returncode != 0:
+                        logger.error(f"FFmpeg error: {stderr.decode()}")
+                except subprocess.TimeoutExpired:
+                    self._process.kill()
+                    logger.warning("FFmpeg killed due to timeout")
+
+            # Release compositor resources
+            from src.pipeline.output import VideoBackgroundCompositor
+            if isinstance(self._compositor, VideoBackgroundCompositor):
+                self._compositor.release()
+
+            logger.debug("Writer thread finished")
+
+    def start(self) -> None:
+        """Start the writer thread."""
+        if self._started:
+            raise RuntimeError("Writer already started")
+
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._writer_thread, daemon=True)
+        self._thread.start()
+        self._started = True
+
+        logger.info(f"Advanced writer started: {self.output_path}")
+        logger.info(f"Format: {self.config.format.value}, Codec: {self._codec_config.codec}")
+
+    def stop(self) -> None:
+        """Stop the writer and finalize video."""
+        if not self._started:
+            return
+
+        try:
+            self._queue.put(self.END_OF_STREAM, timeout=5.0)
+        except Full:
+            pass
+
+        self._stop_event.set()
+
+        if self._thread is not None:
+            self._thread.join(timeout=120.0)
+            if self._thread.is_alive():
+                logger.warning("Writer thread did not stop gracefully")
+
+        self._started = False
+        logger.info(f"Advanced writer stopped. Frames: {self._frames_written}")
+
+    def write_with_alpha(
+        self,
+        foreground: ndarray,
+        alpha: ndarray,
+        timeout: float = 5.0,
+    ) -> bool:
+        """Write a frame with alpha channel.
+
+        Args:
+            foreground: RGB foreground image (H, W, 3).
+            alpha: Alpha matte (H, W) with values 0-255.
+            timeout: Queue timeout in seconds.
+
+        Returns:
+            True if frame was queued successfully.
+        """
+        if not self._started:
+            raise RuntimeError("Writer not started. Call start() first.")
+
+        if self._error is not None:
+            raise RuntimeError(f"Writer error: {self._error}")
+
+        try:
+            self._queue.put((foreground, alpha), timeout=timeout)
+            return True
+        except Full:
+            return False
+
+    def __enter__(self) -> "AdvancedVideoWriter":
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.stop()
+
+    def __repr__(self) -> str:
+        status = "running" if self.is_running else "stopped"
+        return (
+            f"AdvancedVideoWriter(path={self.output_path!r}, "
+            f"format={self.config.format.value}, status={status})"
+        )
