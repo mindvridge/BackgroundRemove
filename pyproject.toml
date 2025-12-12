@@ -50,6 +50,15 @@ upscale = [
     "basicsr>=1.4.0",  # Real-ESRGAN dependency
     "facexlib>=0.3.0",  # Face detection
 ]
+diffusion = [
+    "diffusers>=0.25.0",  # Stable Diffusion pipelines
+    "transformers>=4.35.0",  # Model loading
+    "accelerate>=0.25.0",  # GPU optimization
+    "xformers>=0.0.22",  # Memory efficient attention (optional)
+]
+all = [
+    "background-remove[upscale,diffusion,gpu]",
+]
 
 [project.scripts]
 background-remove = "src.main:main"

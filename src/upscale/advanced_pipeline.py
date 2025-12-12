@@ -2,7 +2,7 @@
 
 Provides high-quality upscaling through a complete pipeline:
 1. Preprocessing: Denoise, sharpen, remove artifacts
-2. Upscaling: HAT, SwinIR, Real-ESRGAN (single or chained)
+2. Upscaling: HAT, SwinIR, Real-ESRGAN, SD, SUPIR (single or chained)
 3. Postprocessing: Color correction, detail enhancement, artifact removal
 
 Quality tiers:
@@ -10,6 +10,8 @@ Quality tiers:
 - Balanced: Real-ESRGAN + light pre/post (~5s/image)
 - Quality: HAT + full processing (~15s/image)
 - Ultra: Multi-pass HAT + SwinIR + full processing (~30s/image)
+- Diffusion: Stable Diffusion x4 upscaler (~20s/image, 8GB+ VRAM)
+- Maximum: SUPIR restoration + enhancement (~45s/image, 12GB+ VRAM)
 """
 
 from __future__ import annotations
@@ -52,7 +54,9 @@ class QualityPreset(Enum):
     FAST = "fast"  # Speed priority
     BALANCED = "balanced"  # Good balance
     QUALITY = "quality"  # Quality priority
-    ULTRA = "ultra"  # Maximum quality
+    ULTRA = "ultra"  # Maximum quality (non-diffusion)
+    DIFFUSION = "diffusion"  # SD x4 upscaler
+    MAXIMUM = "maximum"  # SUPIR (absolute best quality)
 
 
 class UpscalerType(Enum):
@@ -62,6 +66,8 @@ class UpscalerType(Enum):
     SWINIR = "swinir"
     HAT = "hat"
     HAT_L = "hat_l"  # Large variant
+    SD_X4 = "sd_x4"  # Stable Diffusion x4 upscaler
+    SUPIR = "supir"  # SUPIR restoration
 
 
 @dataclass
@@ -181,6 +187,43 @@ PRESET_CONFIGS = {
         "passes": 2,
         "tile_size": 256,
     },
+    QualityPreset.DIFFUSION: {
+        "primary_upscaler": UpscalerType.SD_X4,
+        "secondary_upscaler": None,
+        "enable_preprocessing": True,
+        "preprocess_config": PreprocessConfig(
+            denoise_method=DenoiseMethod.FAST_NLM,
+            denoise_strength=0.3,
+            sharpen_method=SharpenMethod.NONE,
+            remove_jpeg_artifacts=True,
+        ),
+        "enable_postprocessing": True,
+        "postprocess_config": PostprocessConfig(
+            remove_halos=False,
+            enhance_details=False,
+            final_sharpen=True,
+            sharpen_amount=0.1,
+            color_grading=ColorGradingPreset.NATURAL,
+        ),
+        "multi_pass": False,
+        "tile_size": 512,
+    },
+    QualityPreset.MAXIMUM: {
+        "primary_upscaler": UpscalerType.SUPIR,
+        "secondary_upscaler": None,
+        "enable_preprocessing": False,  # SUPIR handles degradation internally
+        "enable_postprocessing": True,
+        "postprocess_config": PostprocessConfig(
+            remove_halos=False,
+            enhance_details=True,
+            detail_strength=0.15,
+            final_sharpen=True,
+            sharpen_amount=0.1,
+            color_grading=ColorGradingPreset.NATURAL,
+        ),
+        "multi_pass": False,
+        "tile_size": 512,
+    },
 }
 
 
@@ -281,6 +324,23 @@ class AdvancedUpscalePipeline:
             upscaler = HATUpscaler(base_config, variant="HAT")
         elif upscaler_type == UpscalerType.HAT_L:
             upscaler = HATUpscaler(base_config, variant="HAT-L")
+        elif upscaler_type == UpscalerType.SD_X4:
+            from src.upscale.sd_upscaler import SDUpscaleConfig, StableDiffusionUpscaler
+            sd_config = SDUpscaleConfig(
+                tile_size=self.config.tile_size,
+                use_fp16=self.config.use_fp16,
+                use_gpu=self.config.use_gpu,
+            )
+            upscaler = StableDiffusionUpscaler(base_config, sd_config)
+        elif upscaler_type == UpscalerType.SUPIR:
+            from src.upscale.supir_upscaler import SUPIRConfig, SUPIRUpscaler
+            supir_config = SUPIRConfig(
+                scale=self.config.scale,
+                tile_size=self.config.tile_size,
+                use_fp16=self.config.use_fp16,
+                use_gpu=self.config.use_gpu,
+            )
+            upscaler = SUPIRUpscaler(base_config, supir_config)
         else:
             raise ValueError(f"Unknown upscaler type: {upscaler_type}")
 
