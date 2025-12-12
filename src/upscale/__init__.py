@@ -9,6 +9,8 @@ Models available:
 - HAT: State-of-the-art (9.8/10), Hybrid Attention Transformer
 - SD x4 Upscaler: Diffusion-based (10/10), best for creative upscaling
 - SUPIR: Restoration + upscaling (10/10), best for degraded images
+- CodeFormer: Face restoration (10/10), best for faces
+- Ultimate Pipeline: All combined (10.7/10), maximum quality
 
 Quality Presets:
 - Fast: Real-ESRGAN only (~2s/image)
@@ -17,30 +19,28 @@ Quality Presets:
 - Ultra: Multi-pass HAT + SwinIR (~30s/image)
 - Diffusion: SD x4 upscaler (~20s/image, 8GB+ VRAM)
 - Maximum: SUPIR restoration (~45s/image, 12GB+ VRAM)
+- Ultimate: All techniques combined (~120s/image, 16GB+ VRAM)
 
 Example:
-    >>> from src.upscale import AdvancedUpscalePipeline, QualityPreset
+    >>> from src.upscale import UltimatePipeline, UltimatePreset
+    >>>
+    >>> # Ultimate quality upscale (10.7/10)
+    >>> pipeline = UltimatePipeline(UltimatePreset.MAXIMUM)
+    >>> result = pipeline.upscale(image)
     >>>
     >>> # Quick quality upscale
+    >>> from src.upscale import AdvancedUpscalePipeline, QualityPreset
     >>> pipeline = AdvancedUpscalePipeline(QualityPreset.QUALITY)
     >>> result = pipeline.upscale_file("input.jpg", "output.png")
-    >>>
-    >>> # Maximum quality with SUPIR
-    >>> pipeline = AdvancedUpscalePipeline(QualityPreset.MAXIMUM)
-    >>> result = pipeline.upscale(degraded_image)
-    >>> print(f"Restored in {result.processing_time:.2f}s")
 
 Simple API:
-    >>> from src.upscale import upscale_quality, sd_upscale, supir_restore
+    >>> from src.upscale import ultimate_upscale, restore_faces
     >>>
-    >>> # High-quality upscale
-    >>> result = upscale_quality(image, scale=4)
+    >>> # Ultimate quality
+    >>> result = ultimate_upscale(image, scale=4)
     >>>
-    >>> # Diffusion-based upscale
-    >>> result = sd_upscale(image, prompt="detailed photo")
-    >>>
-    >>> # Restore degraded image
-    >>> result = supir_restore(old_photo, scale=2)
+    >>> # Face restoration
+    >>> result = restore_faces(image, fidelity=0.5)
 """
 
 from src.upscale.base import (
@@ -135,9 +135,79 @@ def _get_supir_upscaler():
     }
 
 
+def _get_codeformer():
+    """Lazy import for CodeFormer."""
+    from src.upscale.codeformer import (
+        CodeFormerConfig,
+        CodeFormerRestorer,
+        enhance_portrait,
+        restore_faces,
+    )
+    return {
+        "CodeFormerRestorer": CodeFormerRestorer,
+        "CodeFormerConfig": CodeFormerConfig,
+        "restore_faces": restore_faces,
+        "enhance_portrait": enhance_portrait,
+    }
+
+
+def _get_region_segmenter():
+    """Lazy import for region segmentation."""
+    from src.upscale.region_segmenter import (
+        Region,
+        RegionSegmenter,
+        RegionType,
+        SegmenterConfig,
+    )
+    return {
+        "RegionSegmenter": RegionSegmenter,
+        "SegmenterConfig": SegmenterConfig,
+        "RegionType": RegionType,
+        "Region": Region,
+    }
+
+
+def _get_ensemble():
+    """Lazy import for ensemble."""
+    from src.upscale.ensemble import (
+        BlendingMethod,
+        EnsembleConfig,
+        EnsembleUpscaler,
+        ensemble_upscale,
+    )
+    return {
+        "EnsembleUpscaler": EnsembleUpscaler,
+        "EnsembleConfig": EnsembleConfig,
+        "BlendingMethod": BlendingMethod,
+        "ensemble_upscale": ensemble_upscale,
+    }
+
+
+def _get_ultimate():
+    """Lazy import for ultimate pipeline."""
+    from src.upscale.ultimate_pipeline import (
+        UltimateConfig,
+        UltimatePipeline,
+        UltimatePreset,
+        UltimateResult,
+        ultimate_upscale,
+        upscale_document,
+        upscale_portrait,
+    )
+    return {
+        "UltimatePipeline": UltimatePipeline,
+        "UltimateConfig": UltimateConfig,
+        "UltimatePreset": UltimatePreset,
+        "UltimateResult": UltimateResult,
+        "ultimate_upscale": ultimate_upscale,
+        "upscale_portrait": upscale_portrait,
+        "upscale_document": upscale_document,
+    }
+
+
 # Dynamic attribute access for lazy loading
 def __getattr__(name):
-    """Lazy load diffusion-based upscalers."""
+    """Lazy load optional components."""
     sd_components = {
         "StableDiffusionUpscaler",
         "SDXLRefinerUpscaler",
@@ -154,11 +224,46 @@ def __getattr__(name):
         "supir_restore",
         "restore_old_photo",
     }
+    codeformer_components = {
+        "CodeFormerRestorer",
+        "CodeFormerConfig",
+        "restore_faces",
+        "enhance_portrait",
+    }
+    segmenter_components = {
+        "RegionSegmenter",
+        "SegmenterConfig",
+        "RegionType",
+        "Region",
+    }
+    ensemble_components = {
+        "EnsembleUpscaler",
+        "EnsembleConfig",
+        "BlendingMethod",
+        "ensemble_upscale",
+    }
+    ultimate_components = {
+        "UltimatePipeline",
+        "UltimateConfig",
+        "UltimatePreset",
+        "UltimateResult",
+        "ultimate_upscale",
+        "upscale_portrait",
+        "upscale_document",
+    }
 
     if name in sd_components:
         return _get_sd_upscaler()[name]
     elif name in supir_components:
         return _get_supir_upscaler()[name]
+    elif name in codeformer_components:
+        return _get_codeformer()[name]
+    elif name in segmenter_components:
+        return _get_region_segmenter()[name]
+    elif name in ensemble_components:
+        return _get_ensemble()[name]
+    elif name in ultimate_components:
+        return _get_ultimate()[name]
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -183,6 +288,29 @@ __all__ = [
     "SUPIRConfig",
     "SUPIRModel",
     "DegradationLevel",
+    # Face restoration (lazy loaded)
+    "CodeFormerRestorer",
+    "CodeFormerConfig",
+    "restore_faces",
+    "enhance_portrait",
+    # Region segmentation (lazy loaded)
+    "RegionSegmenter",
+    "SegmenterConfig",
+    "RegionType",
+    "Region",
+    # Ensemble (lazy loaded)
+    "EnsembleUpscaler",
+    "EnsembleConfig",
+    "BlendingMethod",
+    "ensemble_upscale",
+    # Ultimate Pipeline (lazy loaded)
+    "UltimatePipeline",
+    "UltimateConfig",
+    "UltimatePreset",
+    "UltimateResult",
+    "ultimate_upscale",
+    "upscale_portrait",
+    "upscale_document",
     # Basic Pipelines
     "ImageUpscalePipeline",
     "VideoUpscalePipeline",
