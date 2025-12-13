@@ -120,10 +120,45 @@ def __getattr__(name: str):
 
     # Ultimate pipeline
     if name in ("UltimateConfig", "UltimatePreset", "UltimateFrame",
-                "UltimateVideoProcessor", "UltimateVideoPipeline", "process_video_ultimate",
-                "get_preset_config"):
+                "UltimateVideoProcessor", "UltimateVideoPipeline", "process_video_ultimate"):
         from src.pipeline import ultimate_video
         return getattr(ultimate_video, name)
+
+    # Iterative refinement
+    if name in ("IterativeConfig", "IterativeRefinement", "RefinementStrategy",
+                "MultiPassRefiner", "CoarseToFineRefiner", "FeedbackLoopRefiner",
+                "CascadeRefiner", "ProgressiveRefiner", "iterative_refine"):
+        from src.pipeline import iterative_refine
+        return getattr(iterative_refine, name)
+
+    # GAN refinement
+    if name in ("GANConfig", "GANModel", "GANRefiner", "HairRefiner",
+                "EdgeDetector", "SimpleGenerator", "PatchDiscriminator",
+                "gan_refine", "refine_hair"):
+        from src.pipeline import gan_refine
+        return getattr(gan_refine, name)
+
+    # Video enhancement
+    if name in ("VideoEnhanceConfig", "VideoEnhancer", "VideoMethod",
+                "FrameMemory", "TemporalAttention", "MotionCompensator",
+                "MultiFrameFusion", "video_enhance"):
+        from src.pipeline import video_enhance
+        return getattr(video_enhance, name)
+
+    # Neural rendering
+    if name in ("NeuralRenderConfig", "NeuralRenderer", "NeuralMethod",
+                "EdgeInpainter", "HaloRemover", "DiffusionRefiner",
+                "LatentBlender", "ForegroundEnhancer",
+                "neural_refine", "remove_halos"):
+        from src.pipeline import neural_render
+        return getattr(neural_render, name)
+
+    # Perfect pipeline
+    if name in ("PerfectConfig", "PerfectPreset", "PerfectFrame",
+                "PerfectProcessor", "PerfectPipeline", "QualityEstimator",
+                "process_video_perfect", "get_perfect_config"):
+        from src.pipeline import perfect_pipeline
+        return getattr(perfect_pipeline, name)
 
     raise AttributeError(f"module 'src.pipeline' has no attribute '{name}'")
 
@@ -227,4 +262,50 @@ __all__ = [
     "UltimateVideoProcessor",
     "UltimateVideoPipeline",
     "process_video_ultimate",
+    # Iterative Refinement (lazy)
+    "IterativeConfig",
+    "IterativeRefinement",
+    "RefinementStrategy",
+    "MultiPassRefiner",
+    "CoarseToFineRefiner",
+    "FeedbackLoopRefiner",
+    "CascadeRefiner",
+    "ProgressiveRefiner",
+    "iterative_refine",
+    # GAN Refinement (lazy)
+    "GANConfig",
+    "GANModel",
+    "GANRefiner",
+    "HairRefiner",
+    "gan_refine",
+    "refine_hair",
+    # Video Enhancement (lazy)
+    "VideoEnhanceConfig",
+    "VideoEnhancer",
+    "VideoMethod",
+    "FrameMemory",
+    "TemporalAttention",
+    "MotionCompensator",
+    "MultiFrameFusion",
+    "video_enhance",
+    # Neural Rendering (lazy)
+    "NeuralRenderConfig",
+    "NeuralRenderer",
+    "NeuralMethod",
+    "EdgeInpainter",
+    "HaloRemover",
+    "DiffusionRefiner",
+    "LatentBlender",
+    "ForegroundEnhancer",
+    "neural_refine",
+    "remove_halos",
+    # Perfect Pipeline (lazy)
+    "PerfectConfig",
+    "PerfectPreset",
+    "PerfectFrame",
+    "PerfectProcessor",
+    "PerfectPipeline",
+    "QualityEstimator",
+    "process_video_perfect",
+    "get_perfect_config",
 ]
