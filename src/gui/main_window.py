@@ -210,6 +210,61 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(matting_group)
 
+        # Chroma key section (for green/blue screen input)
+        chroma_group = QGroupBox("크로마키 (그린스크린 입력)")
+        chroma_layout = QFormLayout(chroma_group)
+
+        # Enable chroma key checkbox
+        from PySide6.QtWidgets import QCheckBox
+        self._chroma_enable_check = QCheckBox("크로마키 사용 (AI 대신 색상 기반 제거)")
+        self._chroma_enable_check.stateChanged.connect(self._on_chroma_enable_changed)
+        chroma_layout.addRow("", self._chroma_enable_check)
+
+        # Key color selector
+        self._chroma_color_combo = QComboBox()
+        chroma_colors = [
+            ("녹색 (Green Screen)", (0, 177, 64)),
+            ("파란색 (Blue Screen)", (0, 71, 187)),
+            ("밝은 녹색", (0, 255, 0)),
+            ("밝은 파란색", (0, 0, 255)),
+        ]
+        for text, color in chroma_colors:
+            self._chroma_color_combo.addItem(text, color)
+        self._chroma_color_combo.currentIndexChanged.connect(self._on_chroma_changed)
+        self._chroma_color_label = QLabel("키 색상:")
+        chroma_layout.addRow(self._chroma_color_label, self._chroma_color_combo)
+
+        # Tolerance slider
+        self._chroma_tolerance_slider = QSlider(Qt.Horizontal)
+        self._chroma_tolerance_slider.setRange(10, 80)
+        self._chroma_tolerance_slider.setValue(40)
+        self._chroma_tolerance_label = QLabel("40")
+        self._chroma_tolerance_slider.valueChanged.connect(self._on_chroma_changed)
+
+        tolerance_row = QHBoxLayout()
+        tolerance_row.addWidget(self._chroma_tolerance_slider)
+        tolerance_row.addWidget(self._chroma_tolerance_label)
+        self._chroma_tolerance_title = QLabel("허용 범위:")
+        chroma_layout.addRow(self._chroma_tolerance_title, tolerance_row)
+
+        # Chroma softness slider
+        self._chroma_softness_slider = QSlider(Qt.Horizontal)
+        self._chroma_softness_slider.setRange(0, 30)
+        self._chroma_softness_slider.setValue(10)
+        self._chroma_softness_label = QLabel("10")
+        self._chroma_softness_slider.valueChanged.connect(self._on_chroma_changed)
+
+        chroma_soft_row = QHBoxLayout()
+        chroma_soft_row.addWidget(self._chroma_softness_slider)
+        chroma_soft_row.addWidget(self._chroma_softness_label)
+        self._chroma_softness_title = QLabel("엣지 부드럽게:")
+        chroma_layout.addRow(self._chroma_softness_title, chroma_soft_row)
+
+        # Initially hide chroma key options
+        self._set_chroma_options_visible(False)
+
+        layout.addWidget(chroma_group)
+
         # Output options section
         options_group = QGroupBox("Output Options")
         options_layout = QFormLayout(options_group)
@@ -399,6 +454,39 @@ class MainWindow(QMainWindow):
         self._bg_browse_btn.setVisible(visible)
         self._blur_label.setVisible(visible)
         self._blur_spin.setVisible(visible)
+
+    def _set_chroma_options_visible(self, visible: bool) -> None:
+        """Show/hide chroma key options.
+
+        Args:
+            visible: Whether to show chroma key options.
+        """
+        self._chroma_color_label.setVisible(visible)
+        self._chroma_color_combo.setVisible(visible)
+        self._chroma_tolerance_title.setVisible(visible)
+        self._chroma_tolerance_slider.setVisible(visible)
+        self._chroma_tolerance_label.setVisible(visible)
+        self._chroma_softness_title.setVisible(visible)
+        self._chroma_softness_slider.setVisible(visible)
+        self._chroma_softness_label.setVisible(visible)
+
+    @Slot(int)
+    def _on_chroma_enable_changed(self, state: int) -> None:
+        """Handle chroma key enable checkbox change."""
+        enabled = state == 2  # Qt.Checked
+        self._set_chroma_options_visible(enabled)
+        # Update preview
+        if self._input_path and self._model and self._model.is_loaded:
+            self._preview_debounce_timer.start(300)
+
+    @Slot()
+    def _on_chroma_changed(self) -> None:
+        """Handle chroma key settings change."""
+        self._chroma_tolerance_label.setText(str(self._chroma_tolerance_slider.value()))
+        self._chroma_softness_label.setText(str(self._chroma_softness_slider.value()))
+        # Update preview
+        if self._input_path and self._chroma_enable_check.isChecked():
+            self._preview_debounce_timer.start(300)
 
     @Slot(int)
     def _on_threshold_changed(self, value: int) -> None:
@@ -633,6 +721,10 @@ class MainWindow(QMainWindow):
             self._input_path,
             alpha_threshold=self._threshold_slider.value(),
             edge_softness=self._softness_slider.value(),
+            use_chroma_key=self._chroma_enable_check.isChecked(),
+            chroma_key_color=self._chroma_color_combo.currentData() or (0, 177, 64),
+            chroma_key_tolerance=self._chroma_tolerance_slider.value(),
+            chroma_key_softness=self._chroma_softness_slider.value(),
         )
         self._preview_worker.frame_ready.connect(self._on_preview_ready)
         self._preview_worker.error.connect(self._on_preview_error)
@@ -674,6 +766,10 @@ class MainWindow(QMainWindow):
             compression_preset=compression_preset,
             alpha_threshold=self._threshold_slider.value(),
             edge_softness=self._softness_slider.value(),
+            use_chroma_key=self._chroma_enable_check.isChecked(),
+            chroma_key_color=self._chroma_color_combo.currentData() or (0, 177, 64),
+            chroma_key_tolerance=self._chroma_tolerance_slider.value(),
+            chroma_key_softness=self._chroma_softness_slider.value(),
             background_path=self._background_path,
             background_blur=self._blur_spin.value(),
         )
@@ -733,6 +829,10 @@ class MainWindow(QMainWindow):
             self._input_path,
             self._output_path,
             output_config,
+            use_chroma_key=self._chroma_enable_check.isChecked(),
+            chroma_key_color=self._chroma_color_combo.currentData() or (0, 177, 64),
+            chroma_key_tolerance=self._chroma_tolerance_slider.value(),
+            chroma_key_softness=self._chroma_softness_slider.value(),
         )
 
         # Connect signals

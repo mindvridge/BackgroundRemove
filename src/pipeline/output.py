@@ -167,10 +167,16 @@ class OutputConfig:
     compression_preset: CompressionPreset | None = None
 
     # Alpha/matting settings
-    alpha_threshold: int = 0  # 0-100, percentage threshold for alpha
+    alpha_threshold: int = 0  # -100 to 100, negative=expand, positive=cut
     edge_softness: int = 0  # 0-20, blur radius for edge softening
 
-    # Green screen settings
+    # Chroma key settings (for green/blue screen input)
+    use_chroma_key: bool = False  # Use chroma key instead of AI matting
+    chroma_key_color: tuple[int, int, int] = (0, 177, 64)  # RGB color to key out
+    chroma_key_tolerance: int = 40  # 0-100, color matching tolerance
+    chroma_key_softness: int = 10  # 0-50, edge softness
+
+    # Green screen output settings
     green_screen_color: tuple[int, int, int] = (0, 177, 64)
 
     # Background settings
@@ -262,6 +268,66 @@ def apply_alpha_processing(
         result = cv2.GaussianBlur(result, (kernel_size, kernel_size), 0)
 
     return result
+
+
+def apply_chroma_key(
+    frame: "ndarray",
+    key_color: tuple[int, int, int] = (0, 177, 64),
+    tolerance: int = 40,
+    softness: int = 10,
+) -> "ndarray":
+    """Apply chroma key to extract alpha from green/blue screen video.
+
+    Args:
+        frame: RGB input frame (H, W, 3).
+        key_color: RGB color to key out (default: green).
+        tolerance: Color matching tolerance (0-100).
+        softness: Edge softness for smoother transitions (0-50).
+
+    Returns:
+        Alpha matte (H, W) with values 0-255.
+    """
+    import cv2
+
+    # Convert to HSV for better color matching
+    frame_hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+
+    # Convert key color to HSV
+    key_rgb = np.uint8([[key_color]])
+    key_hsv = cv2.cvtColor(key_rgb, cv2.COLOR_RGB2HSV)[0][0]
+
+    # Calculate tolerance ranges
+    h_tol = int(tolerance * 0.5)  # Hue tolerance
+    s_tol = int(tolerance * 2.5)  # Saturation tolerance
+    v_tol = int(tolerance * 2.5)  # Value tolerance
+
+    # Create lower and upper bounds
+    lower = np.array([
+        max(0, key_hsv[0] - h_tol),
+        max(0, key_hsv[1] - s_tol),
+        max(0, key_hsv[2] - v_tol)
+    ])
+    upper = np.array([
+        min(179, key_hsv[0] + h_tol),
+        min(255, key_hsv[1] + s_tol),
+        min(255, key_hsv[2] + v_tol)
+    ])
+
+    # Create mask (green areas will be white)
+    mask = cv2.inRange(frame_hsv, lower, upper)
+
+    # Invert mask (foreground = white, background = black)
+    alpha = cv2.bitwise_not(mask)
+
+    # Apply softness (blur then threshold for smooth edges)
+    if softness > 0:
+        blur_size = softness * 2 + 1
+        alpha = cv2.GaussianBlur(alpha, (blur_size, blur_size), 0)
+
+    logger.debug(f"Chroma key: color={key_color}, tolerance={tolerance}, "
+                 f"alpha min={alpha.min()}, max={alpha.max()}, mean={alpha.mean():.1f}")
+
+    return alpha
 
 
 class Compositor(ABC):

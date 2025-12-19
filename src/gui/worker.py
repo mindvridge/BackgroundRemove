@@ -70,6 +70,10 @@ class ProcessingWorker(QThread):
         output_path: str | Path,
         output_config: OutputConfig,
         preview_interval: int = 5,
+        use_chroma_key: bool = False,
+        chroma_key_color: tuple = (0, 177, 64),
+        chroma_key_tolerance: int = 40,
+        chroma_key_softness: int = 10,
         parent: QObject | None = None,
     ) -> None:
         """Initialize processing worker.
@@ -80,6 +84,10 @@ class ProcessingWorker(QThread):
             output_path: Output video path.
             output_config: Output configuration.
             preview_interval: Emit preview every N frames.
+            use_chroma_key: Use chroma key instead of AI matting.
+            chroma_key_color: RGB color to key out.
+            chroma_key_tolerance: Color matching tolerance.
+            chroma_key_softness: Edge softness for chroma key.
             parent: Parent QObject.
         """
         super().__init__(parent)
@@ -89,6 +97,10 @@ class ProcessingWorker(QThread):
         self.output_path = Path(output_path)
         self.output_config = output_config
         self.preview_interval = preview_interval
+        self.use_chroma_key = use_chroma_key
+        self.chroma_key_color = chroma_key_color
+        self.chroma_key_tolerance = chroma_key_tolerance
+        self.chroma_key_softness = chroma_key_softness
 
         self.signals = ProcessingSignals()
         self._cancelled = False
@@ -100,7 +112,13 @@ class ProcessingWorker(QThread):
 
     def run(self) -> None:
         """Execute video processing in background thread."""
-        from src.pipeline.output import OutputFormat, apply_alpha_processing
+        import cv2
+
+        from src.pipeline.output import (
+            OutputFormat,
+            apply_alpha_processing,
+            apply_chroma_key,
+        )
         from src.pipeline.reader import ReaderConfig, VideoReader
         from src.pipeline.writer import AdvancedVideoWriter
 
@@ -111,14 +129,17 @@ class ProcessingWorker(QThread):
 
         try:
             self.signals.started.emit()
-            self.signals.status_changed.emit("Loading model...")
 
-            # Ensure model is loaded
-            if not self.model.is_loaded:
-                self.model.load()
-                self.signals.model_loaded.emit()
+            # Load model only if not using chroma key
+            if not self.use_chroma_key:
+                self.signals.status_changed.emit("Loading model...")
+                if not self.model.is_loaded:
+                    self.model.load()
+                    self.signals.model_loaded.emit()
+                self.model.reset_state()
+            else:
+                self.signals.status_changed.emit("Using chroma key mode...")
 
-            self.model.reset_state()
             self.signals.status_changed.emit("Opening video...")
 
             # Create reader
@@ -165,8 +186,20 @@ class ProcessingWorker(QThread):
                     self.signals.status_changed.emit("Cancelled")
                     break
 
-                # Run inference
-                foreground, alpha = self.model.inference(frame)
+                # Run inference or chroma key
+                if self.use_chroma_key:
+                    # Use chroma key for alpha extraction
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    alpha = apply_chroma_key(
+                        frame_rgb,
+                        key_color=self.chroma_key_color,
+                        tolerance=self.chroma_key_tolerance,
+                        softness=self.chroma_key_softness,
+                    )
+                    foreground = frame_rgb
+                else:
+                    # Use AI model for matting
+                    foreground, alpha = self.model.inference(frame)
                 frames_processed += 1
 
                 # Apply alpha processing (threshold and softness)
@@ -288,6 +321,10 @@ class PreviewWorker(QThread):
         frame_number: int = 0,
         alpha_threshold: int = 0,
         edge_softness: int = 0,
+        use_chroma_key: bool = False,
+        chroma_key_color: tuple = (0, 177, 64),
+        chroma_key_tolerance: int = 40,
+        chroma_key_softness: int = 10,
         parent: QObject | None = None,
     ) -> None:
         """Initialize preview worker.
@@ -296,8 +333,12 @@ class PreviewWorker(QThread):
             model: Background removal model.
             video_path: Video file path.
             frame_number: Frame number to preview.
-            alpha_threshold: Alpha threshold (0-100%).
+            alpha_threshold: Alpha threshold (-100 to 100).
             edge_softness: Edge softness (0-20).
+            use_chroma_key: Use chroma key instead of AI matting.
+            chroma_key_color: RGB color to key out.
+            chroma_key_tolerance: Color matching tolerance.
+            chroma_key_softness: Edge softness for chroma key.
             parent: Parent QObject.
         """
         super().__init__(parent)
@@ -306,12 +347,16 @@ class PreviewWorker(QThread):
         self.frame_number = frame_number
         self.alpha_threshold = alpha_threshold
         self.edge_softness = edge_softness
+        self.use_chroma_key = use_chroma_key
+        self.chroma_key_color = chroma_key_color
+        self.chroma_key_tolerance = chroma_key_tolerance
+        self.chroma_key_softness = chroma_key_softness
 
     def run(self) -> None:
         """Generate preview frame."""
         import cv2
 
-        from src.pipeline.output import apply_alpha_processing
+        from src.pipeline.output import apply_alpha_processing, apply_chroma_key
 
         try:
             cap = cv2.VideoCapture(str(self.video_path))
@@ -326,15 +371,29 @@ class PreviewWorker(QThread):
             if not ret:
                 raise RuntimeError(f"Cannot read frame {self.frame_number}")
 
-            # Ensure model is loaded
-            if not self.model.is_loaded:
-                self.model.load()
+            # Convert BGR to RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Reset state for single frame
-            self.model.reset_state()
+            if self.use_chroma_key:
+                # Use chroma key for alpha extraction
+                alpha = apply_chroma_key(
+                    frame_rgb,
+                    key_color=self.chroma_key_color,
+                    tolerance=self.chroma_key_tolerance,
+                    softness=self.chroma_key_softness,
+                )
+                foreground = frame_rgb
+            else:
+                # Use AI model for matting
+                # Ensure model is loaded
+                if not self.model.is_loaded:
+                    self.model.load()
 
-            # Run inference
-            foreground, alpha = self.model.inference(frame)
+                # Reset state for single frame
+                self.model.reset_state()
+
+                # Run inference (model expects BGR)
+                foreground, alpha = self.model.inference(frame)
 
             # Apply alpha processing (threshold and softness)
             if self.alpha_threshold != 0 or self.edge_softness > 0:
