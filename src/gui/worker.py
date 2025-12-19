@@ -170,7 +170,7 @@ class ProcessingWorker(QThread):
                 frames_processed += 1
 
                 # Apply alpha processing (threshold and softness)
-                if alpha_threshold > 0 or edge_softness > 0:
+                if alpha_threshold != 0 or edge_softness > 0:
                     alpha = apply_alpha_processing(
                         alpha,
                         threshold=alpha_threshold,
@@ -337,7 +337,7 @@ class PreviewWorker(QThread):
             foreground, alpha = self.model.inference(frame)
 
             # Apply alpha processing (threshold and softness)
-            if self.alpha_threshold > 0 or self.edge_softness > 0:
+            if self.alpha_threshold != 0 or self.edge_softness > 0:
                 alpha = apply_alpha_processing(
                     alpha,
                     threshold=self.alpha_threshold,
