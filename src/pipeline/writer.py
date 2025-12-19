@@ -560,6 +560,12 @@ class AdvancedVideoWriter:
             cmd.extend(["-b:v", self.config.bitrate])
         elif self.config.crf is not None:
             cmd.extend(["-crf", str(self.config.crf)])
+        elif self.config.compression_preset is not None and codec_config.supports_alpha:
+            # Apply compression preset for alpha formats (WebM VP9)
+            from src.pipeline.output import COMPRESSION_PRESETS
+            preset = COMPRESSION_PRESETS[self.config.compression_preset]
+            cmd.extend(["-crf", str(preset["crf"])])
+            cmd.extend(preset["extra_args"])
         else:
             cmd.extend(codec_config.extra_args)
 

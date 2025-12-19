@@ -37,6 +37,51 @@ class OutputFormat(Enum):
     CUSTOM_BG = "custom_bg"  # Custom background composite
 
 
+class CompressionPreset(Enum):
+    """Compression quality presets for alpha videos."""
+
+    LOSSLESS = "lossless"      # 최고 품질, 큰 용량
+    HIGH = "high"              # 고품질, 중간 용량
+    MEDIUM = "medium"          # 중간 품질, 작은 용량
+    LOW = "low"                # 낮은 품질, 매우 작은 용량
+    TINY = "tiny"              # 최소 용량 (품질 희생)
+
+
+# Compression preset configurations for VP9 with alpha
+COMPRESSION_PRESETS: dict[CompressionPreset, dict] = {
+    CompressionPreset.LOSSLESS: {
+        "crf": 0,
+        "extra_args": ["-lossless", "1"],
+        "scale": 1.0,
+        "description": "무손실 (최대 용량)",
+    },
+    CompressionPreset.HIGH: {
+        "crf": 20,
+        "extra_args": ["-b:v", "0", "-deadline", "good", "-cpu-used", "1"],
+        "scale": 1.0,
+        "description": "고품질 (권장)",
+    },
+    CompressionPreset.MEDIUM: {
+        "crf": 32,
+        "extra_args": ["-b:v", "0", "-deadline", "good", "-cpu-used", "2"],
+        "scale": 1.0,
+        "description": "중간 품질",
+    },
+    CompressionPreset.LOW: {
+        "crf": 40,
+        "extra_args": ["-b:v", "0", "-deadline", "realtime", "-cpu-used", "4"],
+        "scale": 0.75,
+        "description": "낮은 품질 (작은 용량)",
+    },
+    CompressionPreset.TINY: {
+        "crf": 50,
+        "extra_args": ["-b:v", "0", "-deadline", "realtime", "-cpu-used", "5"],
+        "scale": 0.5,
+        "description": "최소 용량",
+    },
+}
+
+
 @dataclass
 class CodecConfig:
     """FFmpeg codec configuration."""
@@ -111,6 +156,9 @@ class OutputConfig:
     # Quality settings
     crf: int | None = None  # Override default CRF
     bitrate: str | None = None  # e.g., "10M" for 10 Mbps
+
+    # Compression preset (for alpha formats like WebM VP9)
+    compression_preset: CompressionPreset | None = None
 
     # Green screen settings
     green_screen_color: tuple[int, int, int] = (0, 177, 64)
@@ -519,6 +567,11 @@ class FFmpegEncoder:
             cmd.extend(["-b:v", self.config.bitrate])
         elif self.config.crf is not None:
             cmd.extend(["-crf", str(self.config.crf)])
+        elif self.config.compression_preset is not None and codec_config.supports_alpha:
+            # Apply compression preset for alpha formats (WebM VP9)
+            preset = COMPRESSION_PRESETS[self.config.compression_preset]
+            cmd.extend(["-crf", str(preset["crf"])])
+            cmd.extend(preset["extra_args"])
         else:
             # Use default extra args from codec config
             cmd.extend(codec_config.extra_args)

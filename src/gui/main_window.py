@@ -35,7 +35,12 @@ from PySide6.QtWidgets import (
 
 from src.gui.preview import PreviewWidget, ThumbnailWidget
 from src.gui.worker import ModelLoaderWorker, PreviewWorker, ProcessingWorker
-from src.pipeline.output import OutputConfig, OutputFormat
+from src.pipeline.output import (
+    OutputConfig,
+    OutputFormat,
+    CompressionPreset,
+    COMPRESSION_PRESETS,
+)
 
 if TYPE_CHECKING:
     from src.models.base import BaseModel
@@ -191,6 +196,26 @@ class MainWindow(QMainWindow):
         quality_row.addWidget(self._quality_label)
         options_layout.addRow("Quality (CRF):", quality_row)
 
+        # Compression preset (for alpha formats like WebM VP9)
+        self._compression_combo = QComboBox()
+        compression_items = [
+            ("사용 안함", None),
+            ("무손실 (최대 용량)", CompressionPreset.LOSSLESS),
+            ("고품질 (권장)", CompressionPreset.HIGH),
+            ("중간 품질", CompressionPreset.MEDIUM),
+            ("낮은 품질", CompressionPreset.LOW),
+            ("최소 용량", CompressionPreset.TINY),
+        ]
+        for text, preset in compression_items:
+            self._compression_combo.addItem(text, preset)
+        self._compression_combo.setCurrentIndex(2)  # Default to HIGH
+        self._compression_label = QLabel("압축 프리셋:")
+        options_layout.addRow(self._compression_label, self._compression_combo)
+
+        # Initially hide compression preset (show only for alpha formats)
+        self._compression_label.setVisible(False)
+        self._compression_combo.setVisible(False)
+
         # Background file (for custom background)
         bg_row = QHBoxLayout()
         self._bg_edit = QLineEdit()
@@ -328,6 +353,12 @@ class MainWindow(QMainWindow):
         # Show/hide background options for CUSTOM_BG format
         self._set_background_options_visible(fmt == OutputFormat.CUSTOM_BG)
 
+        # Show/hide compression preset for alpha formats
+        alpha_formats = {OutputFormat.WEBM_VP9, OutputFormat.PRORES_4444}
+        show_compression = fmt in alpha_formats
+        self._compression_label.setVisible(show_compression)
+        self._compression_combo.setVisible(show_compression)
+
     @Slot()
     def _browse_input(self) -> None:
         """Open file dialog for input video."""
@@ -460,11 +491,20 @@ class MainWindow(QMainWindow):
             OutputConfig based on UI settings.
         """
         fmt = self._format_combo.currentData()
-        crf = self._quality_slider.value()
+        compression_preset = self._compression_combo.currentData()
+
+        # Use compression preset instead of raw CRF for alpha formats
+        alpha_formats = {OutputFormat.WEBM_VP9, OutputFormat.PRORES_4444}
+        if fmt in alpha_formats and compression_preset is not None:
+            # Compression preset takes priority
+            crf = None
+        else:
+            crf = self._quality_slider.value()
 
         config = OutputConfig(
             format=fmt,
             crf=crf,
+            compression_preset=compression_preset,
             background_path=self._background_path,
             background_blur=self._blur_spin.value(),
         )
