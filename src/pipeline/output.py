@@ -206,17 +206,30 @@ def apply_alpha_processing(
 
     result = alpha.astype(np.float32)
 
+    # Debug: log original stats
+    orig_min, orig_max, orig_mean = alpha.min(), alpha.max(), alpha.mean()
+    logger.debug(f"Alpha processing: threshold={threshold}, orig min={orig_min}, max={orig_max}, mean={orig_mean:.1f}")
+
     if threshold < 0:
-        # Negative threshold: BOOST alpha (keep more foreground)
-        # Apply power curve to boost semi-transparent pixels toward opaque
+        # Negative threshold: EXPAND/BOOST alpha (keep more foreground)
         boost_strength = abs(threshold) / 100.0  # 0.0 to 1.0
-        # Normalize to 0-1
+
+        # Step 1: Apply power curve to boost semi-transparent pixels
         normalized = result / 255.0
-        # Apply power curve: lower power = more boost
-        # power ranges from 1.0 (no boost) to 0.3 (strong boost)
-        power = 1.0 - (boost_strength * 0.7)
+        power = 1.0 - (boost_strength * 0.7)  # 1.0 to 0.3
         boosted = np.power(normalized, power)
         result = (boosted * 255.0).clip(0, 255)
+
+        # Step 2: Apply morphological dilation to expand the mask
+        # This helps when the model outputs binary (0/255) values
+        if boost_strength > 0.1:
+            dilate_size = int(boost_strength * 10) + 1  # 1 to 11 pixels
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (dilate_size, dilate_size)
+            )
+            result_uint8 = result.astype(np.uint8)
+            result = cv2.dilate(result_uint8, kernel, iterations=1).astype(np.float32)
+            logger.debug(f"Dilation applied: kernel size={dilate_size}")
 
     elif threshold > 0:
         # Positive threshold: CUT alpha (remove more background)
@@ -234,6 +247,10 @@ def apply_alpha_processing(
             )
 
     result = result.astype(np.uint8)
+
+    # Debug: log result stats
+    new_min, new_max, new_mean = result.min(), result.max(), result.mean()
+    logger.debug(f"Alpha result: new min={new_min}, max={new_max}, mean={new_mean:.1f}")
 
     # Apply edge softness (Gaussian blur)
     if softness > 0:
