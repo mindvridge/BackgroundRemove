@@ -525,7 +525,11 @@ class FFmpegEncoder:
 
         # Audio settings
         if self.config.copy_audio and self.config.audio_source:
-            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            # Use appropriate audio codec for container
+            if codec_config.container == "webm":
+                cmd.extend(["-c:a", "libopus", "-b:a", "128k"])
+            else:
+                cmd.extend(["-c:a", "aac", "-b:a", "192k"])
             cmd.extend(["-map", "0:v:0", "-map", "1:a:0?"])
 
         # Ensure correct extension
