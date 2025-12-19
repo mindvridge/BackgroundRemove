@@ -194,7 +194,9 @@ def apply_alpha_processing(
 
     Args:
         alpha: Alpha matte (H, W) with values 0-255.
-        threshold: Percentage threshold (0-100). Values below become 0.
+        threshold: Threshold value (-100 to 100).
+            Negative: boost/expand (keep more foreground)
+            Positive: cut (remove more background)
         softness: Blur radius for edge softening (0-20).
 
     Returns:
@@ -202,10 +204,22 @@ def apply_alpha_processing(
     """
     import cv2
 
-    result = alpha.copy()
+    result = alpha.astype(np.float32)
 
-    # Apply threshold: values below threshold become transparent
-    if threshold > 0:
+    if threshold < 0:
+        # Negative threshold: BOOST alpha (keep more foreground)
+        # Apply power curve to boost semi-transparent pixels toward opaque
+        boost_strength = abs(threshold) / 100.0  # 0.0 to 1.0
+        # Normalize to 0-1
+        normalized = result / 255.0
+        # Apply power curve: lower power = more boost
+        # power ranges from 1.0 (no boost) to 0.3 (strong boost)
+        power = 1.0 - (boost_strength * 0.7)
+        boosted = np.power(normalized, power)
+        result = (boosted * 255.0).clip(0, 255)
+
+    elif threshold > 0:
+        # Positive threshold: CUT alpha (remove more background)
         # Convert percentage to 0-255 range
         thresh_value = int(threshold * 255 / 100)
         # Create mask for values below threshold
@@ -215,10 +229,11 @@ def apply_alpha_processing(
         if thresh_value < 255:
             above_mask = result >= thresh_value
             result[above_mask] = np.clip(
-                ((result[above_mask].astype(np.float32) - thresh_value) *
-                 255 / (255 - thresh_value)),
+                ((result[above_mask] - thresh_value) * 255 / (255 - thresh_value)),
                 0, 255
-            ).astype(np.uint8)
+            )
+
+    result = result.astype(np.uint8)
 
     # Apply edge softness (Gaussian blur)
     if softness > 0:

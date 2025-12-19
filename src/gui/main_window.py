@@ -178,17 +178,18 @@ class MainWindow(QMainWindow):
         matting_group = QGroupBox("배경 제거 설정")
         matting_layout = QFormLayout(matting_group)
 
-        # Alpha threshold slider (0-100%)
+        # Alpha threshold slider (-100 to 100)
+        # Negative: boost/keep more, Positive: cut/remove more
         self._threshold_slider = QSlider(Qt.Horizontal)
-        self._threshold_slider.setRange(0, 100)
-        self._threshold_slider.setValue(0)  # Default: no threshold
-        self._threshold_label = QLabel("0%")
+        self._threshold_slider.setRange(-100, 100)
+        self._threshold_slider.setValue(0)  # Default: no adjustment
+        self._threshold_label = QLabel("0")
         self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
 
         threshold_row = QHBoxLayout()
         threshold_row.addWidget(self._threshold_slider)
         threshold_row.addWidget(self._threshold_label)
-        matting_layout.addRow("임계값 (낮음↔높음):", threshold_row)
+        matting_layout.addRow("알파 조절:", threshold_row)
 
         # Edge softness slider
         self._softness_slider = QSlider(Qt.Horizontal)
@@ -203,7 +204,7 @@ class MainWindow(QMainWindow):
         matting_layout.addRow("엣지 부드럽게:", softness_row)
 
         # Tip label
-        tip_label = QLabel("※ 임계값↑: 더 많이 제거 / 임계값↓: 더 많이 유지")
+        tip_label = QLabel("※ 음수(-): 더 유지 (물체 살리기) / 양수(+): 더 제거")
         tip_label.setStyleSheet("color: #888; font-size: 11px;")
         matting_layout.addRow("", tip_label)
 
@@ -402,7 +403,12 @@ class MainWindow(QMainWindow):
     @Slot(int)
     def _on_threshold_changed(self, value: int) -> None:
         """Handle alpha threshold slider change."""
-        self._threshold_label.setText(f"{value}%")
+        if value < 0:
+            self._threshold_label.setText(f"{value} (유지)")
+        elif value > 0:
+            self._threshold_label.setText(f"+{value} (제거)")
+        else:
+            self._threshold_label.setText("0")
         # Debounced preview update
         if self._input_path and self._model and self._model.is_loaded:
             self._preview_debounce_timer.start(300)  # 300ms debounce
