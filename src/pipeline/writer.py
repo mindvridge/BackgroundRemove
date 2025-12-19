@@ -596,10 +596,21 @@ class AdvancedVideoWriter:
             # Composite with background
             return self._compositor.composite(foreground, alpha)
         elif self._codec_config.supports_alpha:
-            # Create RGBA frame
+            # Create RGBA frame with cleaned foreground
+            # Clean foreground in transparent areas to avoid color artifacts
+            alpha_norm = alpha.astype(np.float32) / 255.0
+            if len(alpha_norm.shape) == 2:
+                alpha_norm = alpha_norm[:, :, np.newaxis]
+
+            # Pre-multiply foreground by alpha to clean transparent areas
+            foreground_clean = (foreground.astype(np.float32) * alpha_norm).astype(np.uint8)
+
+            # Create RGBA with cleaned foreground
             if len(alpha.shape) == 2:
-                alpha = alpha[:, :, np.newaxis]
-            return np.dstack([foreground, alpha])
+                alpha_expanded = alpha[:, :, np.newaxis]
+            else:
+                alpha_expanded = alpha
+            return np.dstack([foreground_clean, alpha_expanded])
         else:
             return foreground
 
