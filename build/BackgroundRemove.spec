@@ -1,144 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec file for BackgroundRemove - Single Executable.
+"""PyInstaller spec for BackgroundRemove single executable."""
 
-Creates a single .exe file that includes everything needed.
-"""
-
-import os
-import sys
 from pathlib import Path
 
-# Project root
 project_root = Path(SPECPATH).parent
-src_path = project_root / "src"
 
-block_cipher = None
-
-# Collect all source files
 a = Analysis(
-    [str(project_root / "build" / "launcher.py")],  # Use launcher as entry point
+    [str(project_root / "BackgroundRemove.py")],
     pathex=[str(project_root)],
     binaries=[],
     datas=[
-        # Include config files
         (str(project_root / "configs"), "configs"),
-        # Include source code for imports
         (str(project_root / "src"), "src"),
     ],
     hiddenimports=[
-        # Core dependencies
-        "torch",
-        "torch.nn",
-        "torch.nn.functional",
-        "torch.cuda",
-        "torchvision",
-        "torchvision.transforms",
-        "torchvision.models",
-        # ONNX
-        "onnxruntime",
-        "onnxruntime.capi",
-        # OpenCV
-        "cv2",
-        # PySide6 / Qt
-        "PySide6",
-        "PySide6.QtCore",
-        "PySide6.QtGui",
-        "PySide6.QtWidgets",
-        # Numpy
-        "numpy",
-        # FFmpeg
-        "ffmpeg",
-        # Rembg and its dependencies
-        "rembg",
-        "rembg.bg",
-        "rembg.session_factory",
-        # PIL
-        "PIL",
-        "PIL.Image",
-        # Scipy
-        "scipy",
-        "scipy.ndimage",
-        # Skimage
-        "skimage",
-        "skimage.transform",
-        # Requests for downloads
-        "urllib.request",
-        "ssl",
-        "certifi",
-        # Project modules
-        "src",
-        "src.main",
-        "src.models",
-        "src.models.rvm",
-        "src.models.rvm_onnx",
-        "src.models.rvm_optimized",
-        "src.models.base",
-        "src.models.session_manager",
-        "src.pipeline",
-        "src.pipeline.reader",
-        "src.pipeline.processor",
-        "src.pipeline.pipeline",
-        "src.pipeline.output",
-        "src.pipeline.writer",
-        "src.pipeline.temporal",
-        "src.pipeline.edge_refine",
-        "src.pipeline.enhanced",
-        "src.pipeline.deep_matting",
-        "src.pipeline.matting_ensemble",
-        "src.pipeline.alpha_sr",
-        "src.pipeline.depth_aware",
-        "src.pipeline.sam_segmentation",
-        "src.pipeline.ultimate_video",
-        "src.pipeline.iterative_refine",
-        "src.pipeline.gan_refine",
-        "src.pipeline.video_enhance",
-        "src.pipeline.neural_render",
-        "src.pipeline.perfect_pipeline",
-        "src.gui",
-        "src.gui.app",
-        "src.gui.main_window",
-        "src.gui.preview",
-        "src.gui.worker",
-        "src.upscale",
-        "src.upscale.base",
-        "src.upscale.real_esrgan",
-        "src.upscale.swinir",
-        "src.upscale.hat",
-        "src.upscale.pipeline",
-        "src.upscale.preprocessing",
-        "src.upscale.postprocessing",
-        "src.upscale.sd_upscaler",
-        "src.upscale.supir_upscaler",
-        "src.upscale.advanced_pipeline",
-        "src.upscale.codeformer",
-        "src.upscale.region_segmenter",
-        "src.upscale.ensemble",
-        "src.upscale.ultimate_pipeline",
-        "src.utils",
-        "src.utils.gpu_monitor",
+        "torch", "torch.nn", "torch.nn.functional", "torch.cuda",
+        "torchvision", "torchvision.transforms",
+        "onnxruntime", "cv2", "numpy", "PIL", "PIL.Image",
+        "PySide6", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
+        "scipy", "scipy.ndimage", "ffmpeg", "rembg",
+        "urllib.request", "ssl", "certifi", "zipfile",
     ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[
-        # Exclude unnecessary modules to reduce size
-        "matplotlib",
-        "tkinter",
-        "unittest",
-        "test",
-        "tests",
-        "IPython",
-        "jupyter",
-    ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=["matplotlib", "tkinter", "IPython", "jupyter"],
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
-# Single executable
 exe = EXE(
     pyz,
     a.scripts,
@@ -148,17 +36,8 @@ exe = EXE(
     [],
     name="BackgroundRemove",
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,  # GUI application
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    console=False,
     icon=str(project_root / "build" / "icon.ico") if (project_root / "build" / "icon.ico").exists() else None,
-    version=str(project_root / "build" / "version_info.txt") if (project_root / "build" / "version_info.txt").exists() else None,
 )
