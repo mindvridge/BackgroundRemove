@@ -214,22 +214,26 @@ def apply_alpha_processing(
         # Negative threshold: EXPAND/BOOST alpha (keep more foreground)
         boost_strength = abs(threshold) / 100.0  # 0.0 to 1.0
 
-        # Step 1: Apply power curve to boost semi-transparent pixels
-        normalized = result / 255.0
-        power = 1.0 - (boost_strength * 0.7)  # 1.0 to 0.3
-        boosted = np.power(normalized, power)
-        result = (boosted * 255.0).clip(0, 255)
-
-        # Step 2: Apply morphological dilation to expand the mask
-        # This helps when the model outputs binary (0/255) values
-        if boost_strength > 0.1:
-            dilate_size = int(boost_strength * 10) + 1  # 1 to 11 pixels
+        # Step 1: Apply morphological dilation FIRST to expand the mask
+        # This helps include nearby objects that were incorrectly marked as background
+        if boost_strength > 0.05:
+            # Much larger dilation: 3 to 31 pixels based on strength
+            dilate_size = int(boost_strength * 30) + 3
+            # Make it odd
+            if dilate_size % 2 == 0:
+                dilate_size += 1
             kernel = cv2.getStructuringElement(
                 cv2.MORPH_ELLIPSE, (dilate_size, dilate_size)
             )
             result_uint8 = result.astype(np.uint8)
             result = cv2.dilate(result_uint8, kernel, iterations=1).astype(np.float32)
             logger.debug(f"Dilation applied: kernel size={dilate_size}")
+
+        # Step 2: Apply power curve to boost semi-transparent pixels
+        normalized = result / 255.0
+        power = 1.0 - (boost_strength * 0.7)  # 1.0 to 0.3
+        boosted = np.power(normalized, power)
+        result = (boosted * 255.0).clip(0, 255)
 
     elif threshold > 0:
         # Positive threshold: CUT alpha (remove more background)
