@@ -1,5 +1,6 @@
 @echo off
-chcp 65001 >nul
+setlocal enabledelayedexpansion
+chcp 65001 >nul 2>&1
 title BackgroundRemove
 cd /d "%~dp0"
 
@@ -13,8 +14,8 @@ REM ============================================================
 REM   Python 확인
 REM ============================================================
 echo [1/5] Python 확인 중...
-python --version
-if errorlevel 1 (
+python --version 2>&1
+if !errorlevel! neq 0 (
     echo.
     echo ************************************************************
     echo   [오류] Python이 설치되어 있지 않습니다!
@@ -35,82 +36,19 @@ REM ============================================================
 echo [2/5] 패키지 확인 중...
 echo.
 
-echo   - torch 확인...
-python -c "import torch; print('    버전:', torch.__version__)" 2>nul
-if errorlevel 1 (
-    echo     설치 중... (5-10분 소요)
-    pip install torch torchvision
-    if errorlevel 1 (
-        echo.
-        echo ************************************************************
-        echo   [오류] torch 설치 실패!
-        echo ************************************************************
-        goto :END
-    )
-)
+call :CHECK_INSTALL torch "pip install torch torchvision"
+if !errorlevel! neq 0 goto :END
 
-echo   - PySide6 확인...
-python -c "import PySide6; print('    버전:', PySide6.__version__)" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install PySide6
-    if errorlevel 1 (
-        echo.
-        echo ************************************************************
-        echo   [오류] PySide6 설치 실패!
-        echo ************************************************************
-        goto :END
-    )
-)
+call :CHECK_INSTALL PySide6 "pip install PySide6"
+if !errorlevel! neq 0 goto :END
 
-echo   - opencv 확인...
-python -c "import cv2; print('    버전:', cv2.__version__)" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install opencv-python
-)
-
-echo   - onnxruntime 확인...
-python -c "import onnxruntime; print('    버전:', onnxruntime.__version__)" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install onnxruntime
-)
-
-echo   - rembg 확인...
-python -c "import rembg" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install rembg
-)
-
-echo   - ffmpeg-python 확인...
-python -c "import ffmpeg" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install ffmpeg-python
-)
-
-echo   - numpy 확인...
-python -c "import numpy" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install numpy
-)
-
-echo   - pillow 확인...
-python -c "import PIL" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install pillow
-)
-
-echo   - scipy 확인...
-python -c "import scipy" 2>nul
-if errorlevel 1 (
-    echo     설치 중...
-    pip install scipy
-)
+call :CHECK_INSTALL cv2 "pip install opencv-python"
+call :CHECK_INSTALL onnxruntime "pip install onnxruntime"
+call :CHECK_INSTALL rembg "pip install rembg"
+call :CHECK_INSTALL ffmpeg "pip install ffmpeg-python"
+call :CHECK_INSTALL numpy "pip install numpy"
+call :CHECK_INSTALL PIL "pip install pillow"
+call :CHECK_INSTALL scipy "pip install scipy"
 
 echo.
 echo   패키지 준비 완료!
@@ -122,13 +60,11 @@ REM ============================================================
 echo [3/5] 모델 파일 확인 중...
 
 set "MODEL_DIR=%LOCALAPPDATA%\BackgroundRemove\models"
-if not exist "%MODEL_DIR%" mkdir "%MODEL_DIR%"
+if not exist "%MODEL_DIR%" mkdir "%MODEL_DIR%" 2>nul
 
 if not exist "%MODEL_DIR%\rvm_mobilenetv3.onnx" (
-    echo   모델 다운로드 중 (14MB)...
-    echo   URL: https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3.onnx
-    echo.
-    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3.onnx' -OutFile '%MODEL_DIR%\rvm_mobilenetv3.onnx'}"
+    echo   모델 다운로드 중 ^(14MB^)...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3.onnx' -OutFile '%MODEL_DIR%\rvm_mobilenetv3.onnx'" 2>&1
     if exist "%MODEL_DIR%\rvm_mobilenetv3.onnx" (
         echo   모델 다운로드 완료!
     ) else (
@@ -136,14 +72,10 @@ if not exist "%MODEL_DIR%\rvm_mobilenetv3.onnx" (
         echo ************************************************************
         echo   [오류] 모델 다운로드 실패!
         echo ************************************************************
-        echo   수동 다운로드:
-        echo   위 URL에서 파일을 다운로드하여 아래 경로에 저장하세요:
-        echo   %MODEL_DIR%\rvm_mobilenetv3.onnx
-        echo.
         goto :END
     )
 ) else (
-    echo   모델 파일 있음: %MODEL_DIR%\rvm_mobilenetv3.onnx
+    echo   모델 파일 있음
 )
 echo.
 
@@ -163,28 +95,55 @@ echo.
 echo ============================================================
 echo.
 
-python "%~dp0src\main.py"
-set EXITCODE=%errorlevel%
+python "%~dp0src\main.py" 2>&1
+set "APP_EXIT=!errorlevel!"
 
 echo.
 echo ============================================================
 echo.
 
-if %EXITCODE% neq 0 (
+if !APP_EXIT! neq 0 (
     echo ************************************************************
-    echo   [오류] 애플리케이션 오류 발생! (코드: %EXITCODE%)
+    echo   [오류] 애플리케이션 오류 발생! ^(코드: !APP_EXIT!^)
     echo ************************************************************
     echo.
     echo   위의 오류 메시지를 확인하세요.
     echo.
-) else (
-    echo   애플리케이션이 정상 종료되었습니다.
-    echo.
 )
 
+goto :END
+
+REM ============================================================
+REM   패키지 확인/설치 함수
+REM ============================================================
+:CHECK_INSTALL
+set "PKG_NAME=%~1"
+set "INSTALL_CMD=%~2"
+
+echo   - %PKG_NAME% 확인...
+python -c "import %PKG_NAME%" 2>nul
+if !errorlevel! neq 0 (
+    echo     설치 중...
+    %INSTALL_CMD% 2>&1
+    python -c "import %PKG_NAME%" 2>nul
+    if !errorlevel! neq 0 (
+        echo.
+        echo ************************************************************
+        echo   [오류] %PKG_NAME% 설치 실패!
+        echo ************************************************************
+        exit /b 1
+    )
+)
+exit /b 0
+
+REM ============================================================
+REM   종료
+REM ============================================================
 :END
 echo.
 echo ============================================================
 echo   아무 키나 누르면 창이 닫힙니다...
 echo ============================================================
 pause >nul
+endlocal
+exit /b 0
