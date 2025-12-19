@@ -1,0 +1,33 @@
+# Build requirements for BackgroundRemove Windows executable
+# Install with: pip install -r build/requirements-build.txt
+
+# Core build tool
+pyinstaller>=6.0.0
+
+# Application dependencies (must be installed for building)
+torch>=2.0.0
+onnxruntime>=1.16.0
+opencv-python>=4.8.0
+PySide6>=6.5.0
+ffmpeg-python>=0.2.0
+rembg>=2.0.50
+numpy>=1.24.0
+
+# Additional dependencies for full feature support
+scipy>=1.10.0
+pillow>=9.0.0
+scikit-image>=0.20.0
+
+# Optional GPU support (install separately if needed)
+# onnxruntime-gpu>=1.16.0
+# torch with CUDA (install from pytorch.org)
+
+# Optional upscale support
+# gfpgan>=1.3.0
+# basicsr>=1.4.0
+# facexlib>=0.3.0
+
+# Optional diffusion support
+# diffusers>=0.25.0
+# transformers>=4.35.0
+# accelerate>=0.25.0

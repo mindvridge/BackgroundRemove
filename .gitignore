@@ -8,7 +8,9 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+build/__pycache__/
+build/BackgroundRemove/
+build/*.manifest
 develop-eggs/
 dist/
 downloads/
@@ -26,7 +28,8 @@ wheels/
 
 # PyInstaller
 *.manifest
-*.spec
+# Keep build/*.spec for version control
+!build/*.spec
 
 # Installer logs
 pip-log.txt
