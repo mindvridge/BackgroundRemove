@@ -1,10 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec file for BackgroundRemove application.
+"""PyInstaller spec file for BackgroundRemove - Single Executable.
 
-This spec file creates a Windows executable with:
-- All necessary Python dependencies bundled
-- Model files included or downloaded on first run
-- FFmpeg bundled for video processing
+Creates a single .exe file that includes everything needed.
 """
 
 import os
@@ -19,18 +16,21 @@ block_cipher = None
 
 # Collect all source files
 a = Analysis(
-    [str(project_root / "src" / "main.py")],
+    [str(project_root / "build" / "launcher.py")],  # Use launcher as entry point
     pathex=[str(project_root)],
     binaries=[],
     datas=[
         # Include config files
         (str(project_root / "configs"), "configs"),
+        # Include source code for imports
+        (str(project_root / "src"), "src"),
     ],
     hiddenimports=[
         # Core dependencies
         "torch",
         "torch.nn",
         "torch.nn.functional",
+        "torch.cuda",
         "torchvision",
         "torchvision.transforms",
         "torchvision.models",
@@ -55,12 +55,16 @@ a = Analysis(
         # PIL
         "PIL",
         "PIL.Image",
-        # Scipy (for some image processing)
+        # Scipy
         "scipy",
         "scipy.ndimage",
-        # Skimage (optional)
+        # Skimage
         "skimage",
         "skimage.transform",
+        # Requests for downloads
+        "urllib.request",
+        "ssl",
+        "certifi",
         # Project modules
         "src",
         "src.main",
@@ -123,6 +127,8 @@ a = Analysis(
         "unittest",
         "test",
         "tests",
+        "IPython",
+        "jupyter",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -130,40 +136,24 @@ a = Analysis(
     noarchive=False,
 )
 
-# Filter out unnecessary files
-def filter_binaries(binaries):
-    """Remove unnecessary binaries to reduce size."""
-    exclude_patterns = [
-        "api-ms-win",  # Windows API sets
-        "ucrtbase",
-        "vcruntime",
-    ]
-    filtered = []
-    for name, path, type_ in binaries:
-        exclude = False
-        for pattern in exclude_patterns:
-            if pattern in name.lower():
-                exclude = True
-                break
-        if not exclude:
-            filtered.append((name, path, type_))
-    return filtered
-
-# a.binaries = filter_binaries(a.binaries)
-
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Single executable
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="BackgroundRemove",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # GUI application, no console
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,  # GUI application
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -171,15 +161,4 @@ exe = EXE(
     entitlements_file=None,
     icon=str(project_root / "build" / "icon.ico") if (project_root / "build" / "icon.ico").exists() else None,
     version=str(project_root / "build" / "version_info.txt") if (project_root / "build" / "version_info.txt").exists() else None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="BackgroundRemove",
 )

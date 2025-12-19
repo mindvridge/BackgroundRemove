@@ -1,38 +1,35 @@
 @echo off
-REM Build script for BackgroundRemove Windows executable
-REM Can be run from anywhere - will automatically find project root
+REM Build BackgroundRemove single executable
+REM Output: dist\BackgroundRemove.exe
 
 echo ============================================================
-echo   BackgroundRemove Windows Build Script
+echo   BackgroundRemove - Single Executable Build
 echo ============================================================
 echo.
 
-REM Get the directory where this script is located
+REM Get script directory and project root
 set "SCRIPT_DIR=%~dp0"
-REM Remove trailing backslash
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-REM Get project root (parent of build directory)
 for %%I in ("%SCRIPT_DIR%") do set "PROJECT_ROOT=%%~dpI"
-REM Remove trailing backslash
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
-echo Project root: %PROJECT_ROOT%
+echo Project: %PROJECT_ROOT%
 echo.
 
-REM Change to project root
 cd /d "%PROJECT_ROOT%"
 
 REM Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python not found. Please install Python 3.10+
+    echo ERROR: Python not found!
+    echo Please install Python 3.10+ from python.org
     pause
     exit /b 1
 )
 
-REM Check if virtual environment exists
-if exist "%PROJECT_ROOT%\.venv" (
-    echo Activating virtual environment...
+REM Setup virtual environment
+if exist "%PROJECT_ROOT%\.venv\Scripts\activate.bat" (
+    echo Using existing virtual environment...
     call "%PROJECT_ROOT%\.venv\Scripts\activate.bat"
 ) else (
     echo Creating virtual environment...
@@ -40,15 +37,15 @@ if exist "%PROJECT_ROOT%\.venv" (
     call "%PROJECT_ROOT%\.venv\Scripts\activate.bat"
 
     echo.
-    echo Installing dependencies...
+    echo Installing dependencies (this may take a few minutes)...
     pip install --upgrade pip
     pip install -r "%PROJECT_ROOT%\build\requirements-build.txt"
     pip install -e "%PROJECT_ROOT%"
 )
 
-REM Run build script
+REM Build
 echo.
-echo Starting build...
+echo Building executable...
 python "%PROJECT_ROOT%\build\build_windows.py" %*
 
 if errorlevel 1 (
@@ -59,6 +56,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build complete!
-echo Output: %PROJECT_ROOT%\dist\BackgroundRemove\BackgroundRemove.exe
+echo ============================================================
+echo   BUILD COMPLETE!
+echo ============================================================
+echo.
+echo Output: %PROJECT_ROOT%\dist\BackgroundRemove.exe
+echo.
+echo Copy this single file anywhere and run it.
+echo First run will automatically download required files.
+echo.
 pause
