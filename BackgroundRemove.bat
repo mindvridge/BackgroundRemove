@@ -123,7 +123,9 @@ REM   환경 설정
 REM ============================================================
 echo [4/5] 환경 설정 중...
 set "BACKGROUNDREMOVE_MODELS_DIR=%MODEL_DIR%"
+set "PYTHONPATH=%~dp0"
 echo   모델 경로: %MODEL_DIR%
+echo   Python 경로: %PYTHONPATH%
 echo.
 
 REM ============================================================
@@ -134,7 +136,7 @@ echo.
 echo ============================================================
 echo.
 
-python "%~dp0src\main.py" 2>&1
+python -m src.main 2>&1
 set "APP_EXIT=!errorlevel!"
 
 echo.
