@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -84,6 +84,11 @@ class MainWindow(QMainWindow):
         self._processing_worker: ProcessingWorker | None = None
         self._preview_worker: PreviewWorker | None = None
         self._model_loader: ModelLoaderWorker | None = None
+
+        # Debounce timer for preview updates
+        self._preview_debounce_timer = QTimer()
+        self._preview_debounce_timer.setSingleShot(True)
+        self._preview_debounce_timer.timeout.connect(self._debounced_preview)
 
         self._setup_ui()
         self._setup_menu()
@@ -398,17 +403,22 @@ class MainWindow(QMainWindow):
     def _on_threshold_changed(self, value: int) -> None:
         """Handle alpha threshold slider change."""
         self._threshold_label.setText(f"{value}%")
-        # Auto-update preview if available
+        # Debounced preview update
         if self._input_path and self._model and self._model.is_loaded:
-            self._generate_preview()
+            self._preview_debounce_timer.start(300)  # 300ms debounce
 
     @Slot(int)
     def _on_softness_changed(self, value: int) -> None:
         """Handle edge softness slider change."""
         self._softness_label.setText(str(value))
-        # Auto-update preview if available
+        # Debounced preview update
         if self._input_path and self._model and self._model.is_loaded:
-            self._generate_preview()
+            self._preview_debounce_timer.start(300)  # 300ms debounce
+
+    @Slot()
+    def _debounced_preview(self) -> None:
+        """Generate preview after debounce delay."""
+        self._generate_preview()
 
     @Slot()
     def _on_format_changed(self) -> None:
@@ -601,6 +611,13 @@ class MainWindow(QMainWindow):
         """Generate preview for current frame."""
         if self._input_path is None or self._model is None:
             return
+
+        # Stop previous preview worker if running
+        if self._preview_worker is not None and self._preview_worker.isRunning():
+            self._preview_worker.wait(1000)  # Wait up to 1 second
+            if self._preview_worker.isRunning():
+                self._preview_worker.terminate()
+                self._preview_worker.wait()
 
         self._status_bar.showMessage("Generating preview...")
         self._preview_btn.setEnabled(False)
@@ -803,6 +820,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Handle window close event."""
+        # Stop debounce timer
+        self._preview_debounce_timer.stop()
+
+        # Stop preview worker if running
+        if self._preview_worker is not None and self._preview_worker.isRunning():
+            self._preview_worker.terminate()
+            self._preview_worker.wait(1000)
+
         # Cancel any running processing
         if self._processing_worker is not None and self._processing_worker.isRunning():
             reply = QMessageBox.question(
