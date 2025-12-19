@@ -169,6 +169,41 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(output_group)
 
+        # Matting options section (alpha threshold, edge refinement)
+        matting_group = QGroupBox("배경 제거 설정")
+        matting_layout = QFormLayout(matting_group)
+
+        # Alpha threshold slider (0-100%)
+        self._threshold_slider = QSlider(Qt.Horizontal)
+        self._threshold_slider.setRange(0, 100)
+        self._threshold_slider.setValue(0)  # Default: no threshold
+        self._threshold_label = QLabel("0%")
+        self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
+
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(self._threshold_slider)
+        threshold_row.addWidget(self._threshold_label)
+        matting_layout.addRow("임계값 (낮음↔높음):", threshold_row)
+
+        # Edge softness slider
+        self._softness_slider = QSlider(Qt.Horizontal)
+        self._softness_slider.setRange(0, 20)
+        self._softness_slider.setValue(0)  # Default: no softness
+        self._softness_label = QLabel("0")
+        self._softness_slider.valueChanged.connect(self._on_softness_changed)
+
+        softness_row = QHBoxLayout()
+        softness_row.addWidget(self._softness_slider)
+        softness_row.addWidget(self._softness_label)
+        matting_layout.addRow("엣지 부드럽게:", softness_row)
+
+        # Tip label
+        tip_label = QLabel("※ 임계값↑: 더 많이 제거 / 임계값↓: 더 많이 유지")
+        tip_label.setStyleSheet("color: #888; font-size: 11px;")
+        matting_layout.addRow("", tip_label)
+
+        layout.addWidget(matting_group)
+
         # Output options section
         options_group = QGroupBox("Output Options")
         options_layout = QFormLayout(options_group)
@@ -358,6 +393,22 @@ class MainWindow(QMainWindow):
         self._bg_browse_btn.setVisible(visible)
         self._blur_label.setVisible(visible)
         self._blur_spin.setVisible(visible)
+
+    @Slot(int)
+    def _on_threshold_changed(self, value: int) -> None:
+        """Handle alpha threshold slider change."""
+        self._threshold_label.setText(f"{value}%")
+        # Auto-update preview if available
+        if self._input_path and self._model and self._model.is_loaded:
+            self._generate_preview()
+
+    @Slot(int)
+    def _on_softness_changed(self, value: int) -> None:
+        """Handle edge softness slider change."""
+        self._softness_label.setText(str(value))
+        # Auto-update preview if available
+        if self._input_path and self._model and self._model.is_loaded:
+            self._generate_preview()
 
     @Slot()
     def _on_format_changed(self) -> None:
@@ -554,7 +605,12 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage("Generating preview...")
         self._preview_btn.setEnabled(False)
 
-        self._preview_worker = PreviewWorker(self._model, self._input_path)
+        self._preview_worker = PreviewWorker(
+            self._model,
+            self._input_path,
+            alpha_threshold=self._threshold_slider.value(),
+            edge_softness=self._softness_slider.value(),
+        )
         self._preview_worker.frame_ready.connect(self._on_preview_ready)
         self._preview_worker.error.connect(self._on_preview_error)
         self._preview_worker.start()
@@ -593,6 +649,8 @@ class MainWindow(QMainWindow):
             format=fmt,
             crf=crf,
             compression_preset=compression_preset,
+            alpha_threshold=self._threshold_slider.value(),
+            edge_softness=self._softness_slider.value(),
             background_path=self._background_path,
             background_blur=self._blur_spin.value(),
         )

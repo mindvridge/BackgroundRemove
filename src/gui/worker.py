@@ -100,7 +100,7 @@ class ProcessingWorker(QThread):
 
     def run(self) -> None:
         """Execute video processing in background thread."""
-        from src.pipeline.output import OutputFormat
+        from src.pipeline.output import OutputFormat, apply_alpha_processing
         from src.pipeline.reader import ReaderConfig, VideoReader
         from src.pipeline.writer import AdvancedVideoWriter
 
@@ -144,6 +144,10 @@ class ProcessingWorker(QThread):
             self.output_config.audio_source = self.input_path
             self.output_config.fps = metadata.fps
 
+            # Get alpha processing settings
+            alpha_threshold = self.output_config.alpha_threshold
+            edge_softness = self.output_config.edge_softness
+
             # Create writer
             writer = AdvancedVideoWriter(
                 self.output_path,
@@ -164,6 +168,14 @@ class ProcessingWorker(QThread):
                 # Run inference
                 foreground, alpha = self.model.inference(frame)
                 frames_processed += 1
+
+                # Apply alpha processing (threshold and softness)
+                if alpha_threshold > 0 or edge_softness > 0:
+                    alpha = apply_alpha_processing(
+                        alpha,
+                        threshold=alpha_threshold,
+                        softness=edge_softness,
+                    )
 
                 # Write to output
                 writer.write_with_alpha(foreground, alpha)
@@ -274,6 +286,8 @@ class PreviewWorker(QThread):
         model: BaseModel,
         video_path: str | Path,
         frame_number: int = 0,
+        alpha_threshold: int = 0,
+        edge_softness: int = 0,
         parent: QObject | None = None,
     ) -> None:
         """Initialize preview worker.
@@ -282,16 +296,22 @@ class PreviewWorker(QThread):
             model: Background removal model.
             video_path: Video file path.
             frame_number: Frame number to preview.
+            alpha_threshold: Alpha threshold (0-100%).
+            edge_softness: Edge softness (0-20).
             parent: Parent QObject.
         """
         super().__init__(parent)
         self.model = model
         self.video_path = Path(video_path)
         self.frame_number = frame_number
+        self.alpha_threshold = alpha_threshold
+        self.edge_softness = edge_softness
 
     def run(self) -> None:
         """Generate preview frame."""
         import cv2
+
+        from src.pipeline.output import apply_alpha_processing
 
         try:
             cap = cv2.VideoCapture(str(self.video_path))
@@ -315,6 +335,14 @@ class PreviewWorker(QThread):
 
             # Run inference
             foreground, alpha = self.model.inference(frame)
+
+            # Apply alpha processing (threshold and softness)
+            if self.alpha_threshold > 0 or self.edge_softness > 0:
+                alpha = apply_alpha_processing(
+                    alpha,
+                    threshold=self.alpha_threshold,
+                    softness=self.edge_softness,
+                )
 
             self.frame_ready.emit(foreground, alpha)
 

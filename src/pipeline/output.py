@@ -166,6 +166,10 @@ class OutputConfig:
     # Compression preset (for alpha formats like WebM VP9)
     compression_preset: CompressionPreset | None = None
 
+    # Alpha/matting settings
+    alpha_threshold: int = 0  # 0-100, percentage threshold for alpha
+    edge_softness: int = 0  # 0-20, blur radius for edge softening
+
     # Green screen settings
     green_screen_color: tuple[int, int, int] = (0, 177, 64)
 
@@ -179,6 +183,49 @@ class OutputConfig:
 
     # Output settings
     overwrite: bool = True
+
+
+def apply_alpha_processing(
+    alpha: "ndarray",
+    threshold: int = 0,
+    softness: int = 0,
+) -> "ndarray":
+    """Apply threshold and softness to alpha matte.
+
+    Args:
+        alpha: Alpha matte (H, W) with values 0-255.
+        threshold: Percentage threshold (0-100). Values below become 0.
+        softness: Blur radius for edge softening (0-20).
+
+    Returns:
+        Processed alpha matte.
+    """
+    import cv2
+
+    result = alpha.copy()
+
+    # Apply threshold: values below threshold become transparent
+    if threshold > 0:
+        # Convert percentage to 0-255 range
+        thresh_value = int(threshold * 255 / 100)
+        # Create mask for values below threshold
+        mask = result < thresh_value
+        result[mask] = 0
+        # Rescale remaining values to use full range
+        if thresh_value < 255:
+            above_mask = result >= thresh_value
+            result[above_mask] = np.clip(
+                ((result[above_mask].astype(np.float32) - thresh_value) *
+                 255 / (255 - thresh_value)),
+                0, 255
+            ).astype(np.uint8)
+
+    # Apply edge softness (Gaussian blur)
+    if softness > 0:
+        kernel_size = softness * 2 + 1
+        result = cv2.GaussianBlur(result, (kernel_size, kernel_size), 0)
+
+    return result
 
 
 class Compositor(ABC):
