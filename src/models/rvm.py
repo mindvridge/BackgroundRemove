@@ -162,6 +162,33 @@ class RVMModel:
         )
         return ratio
 
+    def _patch_model_for_pytorch2(self) -> None:
+        """Patch model for PyTorch 2.x compatibility.
+
+        PyTorch 2.x doesn't accept tensors as scale_factor in F.interpolate.
+        This patches the model's _interpolate method to convert tensors to floats.
+        """
+        import types
+        import torch.nn.functional as F
+
+        original_interpolate = self.model._interpolate
+
+        def patched_interpolate(self, x, scale_factor):
+            # Convert tensor to float if needed
+            if isinstance(scale_factor, torch.Tensor):
+                scale_factor = scale_factor.item()
+            return F.interpolate(
+                x,
+                scale_factor=scale_factor,
+                mode='bilinear',
+                align_corners=False,
+                recompute_scale_factor=False,
+            )
+
+        # Bind the patched method to the model
+        self.model._interpolate = types.MethodType(patched_interpolate, self.model)
+        logger.debug("Patched model for PyTorch 2.x compatibility")
+
     def load(self) -> None:
         """Load the RVM model from TorchHub.
 
@@ -193,6 +220,9 @@ class RVMModel:
                 self.config.variant,
                 trust_repo=True,
             )
+
+            # Patch _interpolate for PyTorch 2.x compatibility
+            self._patch_model_for_pytorch2()
 
             # Move to device and set dtype
             self.model = self.model.to(device=self.device, dtype=self.dtype)
