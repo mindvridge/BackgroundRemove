@@ -5,7 +5,6 @@ cd /d "%~dp0"
 
 REM ============================================================
 REM   BackgroundRemove - 원클릭 실행
-REM   더블클릭만 하면 자동 설치 후 실행됩니다.
 REM ============================================================
 
 echo.
@@ -37,37 +36,65 @@ echo 패키지 확인 중...
 python -c "import torch" 2>nul
 if errorlevel 1 (
     echo   torch 설치 중... (시간이 걸립니다)
-    pip install torch torchvision --quiet
+    pip install torch torchvision
+    if errorlevel 1 (
+        echo [!] torch 설치 실패
+        pause
+        exit /b 1
+    )
 )
 
 python -c "import PySide6" 2>nul
 if errorlevel 1 (
     echo   PySide6 설치 중...
-    pip install PySide6 --quiet
+    pip install PySide6
+    if errorlevel 1 (
+        echo [!] PySide6 설치 실패
+        pause
+        exit /b 1
+    )
 )
 
 python -c "import cv2" 2>nul
 if errorlevel 1 (
     echo   opencv 설치 중...
-    pip install opencv-python --quiet
+    pip install opencv-python
 )
 
 python -c "import onnxruntime" 2>nul
 if errorlevel 1 (
     echo   onnxruntime 설치 중...
-    pip install onnxruntime --quiet
+    pip install onnxruntime
 )
 
 python -c "import rembg" 2>nul
 if errorlevel 1 (
     echo   rembg 설치 중...
-    pip install rembg --quiet
+    pip install rembg
 )
 
 python -c "import ffmpeg" 2>nul
 if errorlevel 1 (
     echo   ffmpeg-python 설치 중...
-    pip install ffmpeg-python --quiet
+    pip install ffmpeg-python
+)
+
+python -c "import numpy" 2>nul
+if errorlevel 1 (
+    echo   numpy 설치 중...
+    pip install numpy
+)
+
+python -c "import PIL" 2>nul
+if errorlevel 1 (
+    echo   pillow 설치 중...
+    pip install pillow
+)
+
+python -c "import scipy" 2>nul
+if errorlevel 1 (
+    echo   scipy 설치 중...
+    pip install scipy
 )
 
 echo.
@@ -86,6 +113,8 @@ if not exist "%MODEL_DIR%\rvm_mobilenetv3.onnx" (
         echo [OK] 모델 다운로드 완료
     ) else (
         echo [!] 모델 다운로드 실패
+        pause
+        exit /b 1
     )
 ) else (
     echo [OK] 모델 파일 확인됨
@@ -99,11 +128,19 @@ echo ============================================================
 echo   애플리케이션 시작
 echo ============================================================
 echo.
+echo 창이 닫히면 아래에 오류 메시지가 표시됩니다.
+echo.
 
-python -c "import sys; sys.path.insert(0, r'%~dp0'); from src.main import main; main()"
+REM Python 스크립트 실행 (오류 출력 포함)
+python "%~dp0src\main.py"
 
+echo.
+echo ============================================================
 if errorlevel 1 (
-    echo.
-    echo [오류] 실행 중 문제가 발생했습니다.
-    pause
+    echo [!] 오류가 발생했습니다. 위의 메시지를 확인하세요.
+) else (
+    echo 애플리케이션이 종료되었습니다.
 )
+echo ============================================================
+echo.
+pause
