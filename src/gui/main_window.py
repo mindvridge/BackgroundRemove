@@ -76,6 +76,11 @@ class MainWindow(QMainWindow):
         self._output_path: Path | None = None
         self._background_path: Path | None = None
 
+        # Video info for size estimation
+        self._video_duration: float = 0.0  # seconds
+        self._video_width: int = 0
+        self._video_height: int = 0
+
         self._processing_worker: ProcessingWorker | None = None
         self._preview_worker: PreviewWorker | None = None
         self._model_loader: ModelLoaderWorker | None = None
@@ -209,12 +214,21 @@ class MainWindow(QMainWindow):
         for text, preset in compression_items:
             self._compression_combo.addItem(text, preset)
         self._compression_combo.setCurrentIndex(2)  # Default to HIGH
+        self._compression_combo.currentIndexChanged.connect(self._update_size_estimate)
         self._compression_label = QLabel("압축 프리셋:")
         options_layout.addRow(self._compression_label, self._compression_combo)
+
+        # Estimated file size display
+        self._size_estimate_label = QLabel("")
+        self._size_estimate_label.setStyleSheet("color: #888; font-style: italic;")
+        self._size_estimate_title = QLabel("예상 용량:")
+        options_layout.addRow(self._size_estimate_title, self._size_estimate_label)
 
         # Initially hide compression preset (show only for alpha formats)
         self._compression_label.setVisible(False)
         self._compression_combo.setVisible(False)
+        self._size_estimate_title.setVisible(False)
+        self._size_estimate_label.setVisible(False)
 
         # Background file (for custom background)
         bg_row = QHBoxLayout()
@@ -358,6 +372,12 @@ class MainWindow(QMainWindow):
         show_compression = fmt in alpha_formats
         self._compression_label.setVisible(show_compression)
         self._compression_combo.setVisible(show_compression)
+        self._size_estimate_title.setVisible(show_compression)
+        self._size_estimate_label.setVisible(show_compression)
+
+        # Update size estimate
+        if show_compression:
+            self._update_size_estimate()
 
     @Slot()
     def _browse_input(self) -> None:
@@ -374,6 +394,9 @@ class MainWindow(QMainWindow):
             self._input_edit.setText(str(path))
             self._input_thumbnail.set_video(path)
 
+            # Get video info for size estimation
+            self._load_video_info(path)
+
             # Auto-generate output path
             output_path = self._input_path.parent / f"{self._input_path.stem}_removed.mp4"
             self._output_path = output_path
@@ -382,6 +405,9 @@ class MainWindow(QMainWindow):
             # Enable buttons
             self._preview_btn.setEnabled(True)
             self._process_btn.setEnabled(True)
+
+            # Update size estimate
+            self._update_size_estimate()
 
             self._status_bar.showMessage(f"Loaded: {self._input_path.name}")
 
@@ -424,6 +450,68 @@ class MainWindow(QMainWindow):
         if path:
             self._background_path = Path(path)
             self._bg_edit.setText(str(path))
+
+    def _load_video_info(self, path: str) -> None:
+        """Load video information for size estimation.
+
+        Args:
+            path: Path to video file.
+        """
+        import cv2
+
+        cap = cv2.VideoCapture(path)
+        if cap.isOpened():
+            self._video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self._video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if fps > 0:
+                self._video_duration = frame_count / fps
+            cap.release()
+
+    @Slot()
+    def _update_size_estimate(self) -> None:
+        """Update the estimated file size display."""
+        preset = self._compression_combo.currentData()
+
+        if preset is None or self._video_duration <= 0:
+            self._size_estimate_label.setText("영상을 선택하세요")
+            return
+
+        # Get preset config
+        preset_config = COMPRESSION_PRESETS.get(preset)
+        if not preset_config:
+            self._size_estimate_label.setText("-")
+            return
+
+        # Calculate estimated size
+        # Bitrate is for 1080p, scale by resolution ratio
+        base_bitrate = preset_config["est_bitrate_mbps"]
+        scale = preset_config.get("scale", 1.0)
+
+        # Resolution factor (compared to 1080p = 1920x1080)
+        ref_pixels = 1920 * 1080
+        actual_pixels = (self._video_width * scale) * (self._video_height * scale)
+        resolution_factor = actual_pixels / ref_pixels if ref_pixels > 0 else 1.0
+
+        # Adjusted bitrate
+        adjusted_bitrate = base_bitrate * resolution_factor
+
+        # Estimated size in MB
+        size_mb = (adjusted_bitrate * self._video_duration) / 8  # bits to bytes
+
+        # Format display
+        if size_mb >= 1024:
+            size_str = f"~{size_mb / 1024:.1f} GB"
+        else:
+            size_str = f"~{size_mb:.0f} MB"
+
+        # Add duration info
+        duration_min = int(self._video_duration // 60)
+        duration_sec = int(self._video_duration % 60)
+        duration_str = f"{duration_min}:{duration_sec:02d}"
+
+        self._size_estimate_label.setText(f"{size_str} ({duration_str})")
 
     def _load_model_async(self) -> None:
         """Load model in background thread."""

@@ -48,36 +48,42 @@ class CompressionPreset(Enum):
 
 
 # Compression preset configurations for VP9 with alpha
+# est_bitrate_mbps: 예상 비트레이트 (1080p 기준, Mbps)
 COMPRESSION_PRESETS: dict[CompressionPreset, dict] = {
     CompressionPreset.LOSSLESS: {
         "crf": 0,
         "extra_args": ["-lossless", "1"],
         "scale": 1.0,
         "description": "무손실 (최대 용량)",
+        "est_bitrate_mbps": 80.0,  # 1080p 기준
     },
     CompressionPreset.HIGH: {
         "crf": 20,
         "extra_args": ["-b:v", "0", "-deadline", "good", "-cpu-used", "1"],
         "scale": 1.0,
         "description": "고품질 (권장)",
+        "est_bitrate_mbps": 8.0,
     },
     CompressionPreset.MEDIUM: {
         "crf": 32,
         "extra_args": ["-b:v", "0", "-deadline", "good", "-cpu-used", "2"],
         "scale": 1.0,
         "description": "중간 품질",
+        "est_bitrate_mbps": 3.0,
     },
     CompressionPreset.LOW: {
         "crf": 40,
         "extra_args": ["-b:v", "0", "-deadline", "realtime", "-cpu-used", "4"],
         "scale": 0.75,
         "description": "낮은 품질 (작은 용량)",
+        "est_bitrate_mbps": 1.2,
     },
     CompressionPreset.TINY: {
         "crf": 50,
         "extra_args": ["-b:v", "0", "-deadline", "realtime", "-cpu-used", "5"],
         "scale": 0.5,
         "description": "최소 용량",
+        "est_bitrate_mbps": 0.4,
     },
 }
 
